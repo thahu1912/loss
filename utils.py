@@ -92,7 +92,7 @@ def f1_score(query_labels, cluster_labels):
     return F1
 
 def get_relevance_mask(shape, gt_labels, embeds_same_source, label_counts):
-    relevance_mask = np.zeros(shape=shape, dtype=np.int)
+    relevance_mask = np.zeros(shape=shape, dtype=int)
     for k, v in label_counts.items():
         matching_rows = np.where(gt_labels==k)[0]
         max_column = v-1 if embeds_same_source else v

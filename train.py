@@ -193,15 +193,17 @@ param_groups = [
 if args.loss == 'Proxy_Anchor':
     param_groups.append({'params': criterion.proxies, 'lr':float(args.lr) * 100})
 
-def mixup(x, y, alpha):
-    batch_size = x.size()[0]
+def mixup(x, y, alpha=1.0):
+    '''Assumes x and y are both on the same device (e.g., CUDA)'''
     lam = np.random.beta(alpha, alpha)
+    batch_size = x.size()[0]
+    
+    # 🛠 Move index to same device as x
+    index = torch.randperm(batch_size).to(x.device)
 
-    index = torch.randperm(batch_size).cuda()
-
-    mixed_x = lam*x + (1-lam)*x[index,:]
+    mixed_x = lam * x + (1 - lam) * x[index, :]
     y_a, y_b = y, y[index]
-
+    
     return mixed_x, y_a, y_b, lam
 
 # Optimizer Setting
