@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import math
 import random
 from pytorch_metric_learning import miners, losses
+from pytorch_metric_learning.losses import BayesianTripletLoss as PMLBayesianTripletLoss
 
 
 def binarize(T, nb_classes):
@@ -133,5 +134,21 @@ class NPairLoss(nn.Module):
         self.loss_func = losses.NPairsLoss(l2_reg_weight=self.l2_reg, normalize_embeddings = False)
         
     def forward(self, embeddings, labels):
+        loss = self.loss_func(embeddings, labels)
+        return loss
+
+class BayesianTripletLoss(nn.Module):
+    def __init__(self, margin=0.05, var_prior=1.0, kl_scale_factor=1e-6, distribution='gauss'):
+        super(BayesianTripletLoss, self).__init__()
+        self.loss_func = PMLBayesianTripletLoss(
+            margin=margin, 
+            var_prior=var_prior, 
+            kl_scale_factor=kl_scale_factor, 
+            distribution=distribution
+        )
+        
+    def forward(self, embeddings, labels):
+        # For Bayesian triplet loss, we expect embeddings to contain both mean and variance
+        # The embeddings should be concatenated as [mean, variance]
         loss = self.loss_func(embeddings, labels)
         return loss

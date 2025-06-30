@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import math
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
 from torch.autograd import Variable
 import numpy as np
 import torch.nn.init as init
@@ -10,6 +11,73 @@ from torchvision.models import resnet34
 from torchvision.models import resnet50
 from torchvision.models import resnet101
 import torch.utils.model_zoo as model_zoo
+
+class L2Norm(nn.Module):
+    def __init__(self):
+        super(L2Norm, self).__init__()
+        
+    def forward(self, x):
+        return F.normalize(x, p=2, dim=1)
+    
+class GeM(nn.Module):
+    def __init__(self, p=3.0, eps=1e-6):
+        super(GeM, self).__init__()
+        self.p = Parameter(torch.ones(1) * p)
+        self.eps = eps
+
+    def forward(self, x):
+        return F.adaptive_avg_pool2d(x.clamp(min=self.eps).pow(self.p), (1, 1)).pow(1.0 / self.p)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(p={self.p.item():.4f}, eps={self.eps})"
+
+class Resnet18GeM(nn.Module):
+    def __init__(self,embedding_size, pretrained=True, is_norm=True, bn_freeze = True):
+        super(Resnet18GeM, self).__init__()
+        self.model = resnet18(pretrained)
+        self.is_norm = is_norm
+        self.embedding_size = embedding_size
+        self.num_ftrs = self.model.fc.in_features
+        self.mean_pool = nn.Sequential(*[GeM(), nn.Flatten()])
+        self.mean_head = nn.Sequential(
+            nn.Linear(self.num_ftrs, self.embedding_size - 1),
+            L2Norm()
+        )
+        self.var_pool = nn.Sequential(*[GeM(), nn.Flatten()])
+        self.var_head = nn.Sequential(
+            nn.Linear(self.num_ftrs, 1),
+            nn.Softplus()
+        )
+
+    def forward(self, x):
+        x = self.model.conv1(x)
+        x = self.model.bn1(x)
+        x = self.model.relu(x)
+        x = self.model.maxpool(x)
+        x = self.model.layer1(x)
+        x = self.model.layer2(x)
+        x = self.model.layer3(x)
+        x = self.model.layer4(x)
+
+        mean_x = self.mean_pool(x)
+        var_x = self.var_pool(x)
+        mean = self.mean_head(mean_x)  # [B, embed-1]
+        var = self.var_head(var_x)     # [B, 1]
+
+        return mean, var
+
+    def _initialize_weights(self):
+        init.kaiming_normal_(self.mean_head[0].weight, mode='fan_out')
+        init.constant_(self.mean_head[0].bias, 0)
+        init.kaiming_normal_(self.var_head[0].weight, mode='fan_out')
+        init.constant_(self.var_head[0].bias, 0)
+
+        init.kaiming_normal_(self.model.embedding.weight, mode='fan_out')
+        init.constant_(self.model.embedding.bias, 0)
+
+
+        
+        
 
 class Resnet18(nn.Module):
     def __init__(self,embedding_size, pretrained=True, is_norm=True, bn_freeze = True):
@@ -255,3 +323,5 @@ class Resnet101(nn.Module):
     def _initialize_weights(self):
         init.kaiming_normal_(self.model.embedding.weight, mode='fan_out')
         init.constant_(self.model.embedding.bias, 0)
+
+
